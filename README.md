@@ -1,4 +1,4 @@
-# Simple Chat Pro
+# Simple Chat
 
 Realtime chat app with rooms, direct messages, moderation, persistence, and file handling.
 
