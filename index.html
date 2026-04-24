@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simple Chat Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-shape shape-a"></div>
+  <div class="background-shape shape-b"></div>
+
+  <section id="gate" class="gate">
+    <form id="sessionForm" class="gate-card">
+      <p class="eyebrow">Realtime Chat</p>
+      <h1>Join The Network</h1>
+      <label for="nicknameInput" class="sr-only">Nickname</label>
+      <input id="nicknameInput" maxlength="24" placeholder="Unique nickname" required>
+      <button class="action-btn" type="submit">Enter</button>
+      <p class="hint">Nickname is kept for this browser session.</p>
+    </form>
+  </section>
+
+  <main id="app" class="app hidden" aria-hidden="true">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Rooms</h2>
+        </div>
+        <div class="new-room">
+          <input id="newRoomInput" maxlength="30" placeholder="Create room">
+          <button id="createRoomBtn" class="ghost-btn" type="button">Create</button>
+        </div>
+        <ul id="roomList" class="list"></ul>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <h2>Online</h2>
+        </div>
+        <ul id="onlineUsersList" class="list"></ul>
+      </section>
+    </aside>
+
+    <section class="chat">
+      <header class="chat-header">
+        <div>
+          <p id="scopeLabel" class="eyebrow">Room</p>
+          <h3 id="scopeTitle">General</h3>
+        </div>
+        <div class="header-tools">
+          <span class="pill">You: <strong id="selfName"></strong></span>
+          <span id="rolePill" class="pill">role: member</span>
+          <button id="muteBtn" class="ghost-btn" type="button">Mute</button>
+          <button id="statsBtn" class="ghost-btn" type="button">Stats</button>
+          <button id="switchUserBtn" class="ghost-btn" type="button">Switch User</button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <input id="searchInput" placeholder="Search messages in current scope">
+        <button id="searchBtn" class="ghost-btn" type="button">Search</button>
+        <button id="historyBtn" class="ghost-btn" type="button">Load Older</button>
+      </div>
+
+      <section id="pinnedWrap" class="pinned-wrap hidden">
+        <p class="eyebrow">Pinned</p>
+        <div id="pinnedMessages"></div>
+      </section>
+
+      <section id="messages" class="messages"></section>
+      <p id="typingIndicator" class="typing"></p>
+
+      <form id="composer" class="composer">
+        <div class="composer-row">
+          <input id="dmTargetInput" class="hidden" maxlength="24" placeholder="DM target nickname">
+          <textarea id="messageInput" rows="1" maxlength="500" placeholder="Type message. Use @nickname for mentions"></textarea>
+        </div>
+        <div class="composer-actions">
+          <label class="file-label">
+            <input id="fileInput" type="file">
+            <span>Attach</span>
+          </label>
+          <span id="attachmentLabel" class="hint">No file attached</span>
+          <button id="sendBtn" class="action-btn" type="submit">Send</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <template id="messageTemplate">
+    <article class="message-card">
+      <div class="meta">
+        <strong class="author"></strong>
+        <span class="time"></span>
+      </div>
+      <p class="body"></p>
+      <div class="file-wrap hidden">
+        <a class="file-link" target="_blank" rel="noopener noreferrer">Attachment</a>
+      </div>
+      <div class="reactions"></div>
+      <div class="controls"></div>
+    </article>
+  </template>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+node_modules/
+chat.sqlite
+uploads/
+.env
+.DS_Store
+Thumbs.db
