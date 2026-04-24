@@ -2,6 +2,9 @@
 
 Realtime chat app with rooms, direct messages, moderation, persistence, and file handling.
 
+## Demo Recording
+[Watch the demo video](Simple Chat.mp4)
+****
 ## Run
 
 1. Install Node.js 20+.
