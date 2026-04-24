@@ -1,5 +1,7 @@
 const SESSION_NICK_KEY = "chat_session_nickname";
 const MUTE_KEY = "chat_mute_map";
+const DEMO_ROOMS_KEY = "chat_demo_rooms_v1";
+const DEMO_MESSAGES_KEY = "chat_demo_messages_v1";
 
 const gateEl = document.getElementById("gate");
 const appEl = document.getElementById("app");
@@ -32,7 +34,9 @@ const attachmentLabelEl = document.getElementById("attachmentLabel");
 const sendBtnEl = document.getElementById("sendBtn");
 const messageTemplateEl = document.getElementById("messageTemplate");
 
-const socket = io();
+const socket = typeof window.io === "function" ? window.io() : null;
+const isDemoMode = !socket;
+
 let config = {
   maxMessageLength: 500,
   maxFileSize: 5 * 1024 * 1024,
@@ -83,102 +87,95 @@ function bootstrap() {
   searchBtnEl.addEventListener("click", onSearchMessages);
   historyBtnEl.addEventListener("click", onLoadOlder);
 
-  socket.on("connect", () => {
-    const nickname = sessionStorage.getItem(SESSION_NICK_KEY);
-    if (nickname) {
-      startSession(nickname, false);
-    }
-  });
-  socket.on("session:ready", onSessionReady);
-  socket.on("room:list", (rooms) => {
-    state.rooms = rooms || [];
-    renderRooms();
-  });
-  socket.on("room:joined", ({ room, role, history, replay, pinned }) => {
-    state.current = { type: "room", roomName: room.name, targetNickname: null };
-    state.roomRole = role || "member";
-    const merged = mergeByMessageId([...(history || []), ...(replay || [])]);
-    state.messages = merged;
-    state.pinned = pinned || [];
-    renderScopeHeader();
-    renderPinned();
-    renderMessages();
-    renderRoomSelection();
-    sendTyping(false);
-  });
-  socket.on("presence:update", ({ roomId, users }) => {
-    const currentRoom = state.rooms.find((room) => room.id === roomId);
-    if (currentRoom && currentRoom.name === state.current.roomName) {
-      state.onlineUsers = users || [];
-      renderOnlineUsers();
-    }
-  });
-  socket.on("chat:message", (message) => {
-    if (!belongsToCurrentScope(message)) return;
-    state.messages.push(message);
-    state.messages = mergeByMessageId(state.messages);
-    renderMessages();
-    const isSelf = message.senderId === state.userId;
-    if (!isSelf && !isCurrentScopeMuted()) {
-      transientNotice(`New message from ${message.senderNickname}`);
-    }
-  });
-  socket.on("chat:messageUpdate", (payload) => {
-    if (payload.type === "edit" && payload.message) {
-      state.messages = state.messages.map((msg) => (msg.id === payload.message.id ? payload.message : msg));
-    }
-    if (payload.type === "delete") {
-      state.messages = state.messages.map((msg) =>
-        msg.id === payload.messageId ? { ...msg, deleted: true, content: "[deleted]" } : msg
-      );
-    }
-    if (payload.type === "reaction") {
-      state.messages = state.messages.map((msg) =>
-        msg.id === payload.messageId ? { ...msg, reactions: payload.reactions } : msg
-      );
-    }
-    renderMessages();
-  });
-  socket.on("chat:typing", (payload) => {
-    if (payload.nickname === state.nickname) return;
-    if (payload.scope === "room" && state.current.type === "room") {
-      typingIndicatorEl.textContent = payload.isTyping ? `${payload.nickname} is typing...` : "";
-    }
-    if (payload.scope === "dm" && state.current.type === "dm" && payload.nickname === state.current.targetNickname) {
-      typingIndicatorEl.textContent = payload.isTyping ? `${payload.nickname} is typing...` : "";
-    }
-  });
-  socket.on("chat:delivery", ({ messageId, status }) => {
-    if (messageId) {
-      state.deliveryByMessageId.set(messageId, status);
-      renderMessages();
-    }
-  });
-  socket.on("room:pinned", ({ roomId, pinned }) => {
-    const currentRoom = state.rooms.find((room) => room.id === roomId);
-    if (currentRoom && currentRoom.name === state.current.roomName) {
+  if (!isDemoMode) {
+    socket.on("connect", () => {
+      const nickname = sessionStorage.getItem(SESSION_NICK_KEY);
+      if (nickname) {
+        startSession(nickname, false);
+      }
+    });
+    socket.on("session:ready", onSessionReady);
+    socket.on("room:list", (rooms) => {
+      state.rooms = rooms || [];
+      renderRooms();
+    });
+    socket.on("room:joined", ({ room, role, history, replay, pinned }) => {
+      state.current = { type: "room", roomName: room.name, targetNickname: null };
+      state.roomRole = role || "member";
+      const merged = mergeByMessageId([...(history || []), ...(replay || [])]);
+      state.messages = merged;
       state.pinned = pinned || [];
+      renderScopeHeader();
       renderPinned();
-    }
-  });
-  socket.on("room:stats:update", ({ roomId, memberCount, messagesToday }) => {
-    const currentRoom = state.rooms.find((room) => room.id === roomId);
-    if (currentRoom && currentRoom.name === state.current.roomName) {
-      transientNotice(`Stats: ${memberCount} online, ${messagesToday} msgs/day`);
-    }
-  });
-  socket.on("moderation:kicked", ({ roomId, reason }) => {
-    const kickedRoom = state.rooms.find((room) => room.id === roomId);
-    if (kickedRoom && kickedRoom.name === state.current.roomName) {
-      transientNotice(`You were removed: ${reason || "kick"}`);
-      state.messages = [];
-      state.onlineUsers = [];
       renderMessages();
-      renderOnlineUsers();
-    }
-  });
+      renderRoomSelection();
+      sendTyping(false);
+    });
+    socket.on("presence:update", ({ roomId, users }) => {
+      const currentRoom = state.rooms.find((room) => room.id === roomId);
+      if (currentRoom && currentRoom.name === state.current.roomName) {
+        state.onlineUsers = users || [];
+        renderOnlineUsers();
+      }
+    });
+    socket.on("chat:message", (message) => {
+      if (!belongsToCurrentScope(message)) return;
+      state.messages.push(message);
+      state.messages = mergeByMessageId(state.messages);
+      renderMessages();
+      if (message.senderId !== state.userId && !isCurrentScopeMuted()) {
+        transientNotice(`New message from ${message.senderNickname}`);
+      }
+    });
+    socket.on("chat:messageUpdate", (payload) => {
+      if (payload.type === "edit" && payload.message) {
+        state.messages = state.messages.map((msg) => (msg.id === payload.message.id ? payload.message : msg));
+      }
+      if (payload.type === "delete") {
+        state.messages = state.messages.map((msg) =>
+          msg.id === payload.messageId ? { ...msg, deleted: true, content: "[deleted]" } : msg
+        );
+      }
+      if (payload.type === "reaction") {
+        state.messages = state.messages.map((msg) =>
+          msg.id === payload.messageId ? { ...msg, reactions: payload.reactions } : msg
+        );
+      }
+      renderMessages();
+    });
+    socket.on("chat:typing", (payload) => {
+      if (payload.nickname === state.nickname) return;
+      if (payload.scope === "room" && state.current.type === "room") {
+        typingIndicatorEl.textContent = payload.isTyping ? `${payload.nickname} is typing...` : "";
+      }
+      if (payload.scope === "dm" && state.current.type === "dm" && payload.nickname === state.current.targetNickname) {
+        typingIndicatorEl.textContent = payload.isTyping ? `${payload.nickname} is typing...` : "";
+      }
+    });
+    socket.on("chat:delivery", ({ messageId, status }) => {
+      if (messageId) {
+        state.deliveryByMessageId.set(messageId, status);
+        renderMessages();
+      }
+    });
+    socket.on("room:pinned", ({ roomId, pinned }) => {
+      const currentRoom = state.rooms.find((room) => room.id === roomId);
+      if (currentRoom && currentRoom.name === state.current.roomName) {
+        state.pinned = pinned || [];
+        renderPinned();
+      }
+    });
+  } else {
+    transientNotice("Demo mode enabled for GitHub Pages.");
+  }
 
-  if (!sessionStorage.getItem(SESSION_NICK_KEY)) {
+  const savedNick = sessionStorage.getItem(SESSION_NICK_KEY);
+  if (savedNick && isDemoMode) {
+    startDemoSession(savedNick);
+    return;
+  }
+
+  if (!savedNick) {
     lockApp();
   }
 }
@@ -187,6 +184,10 @@ function onSessionSubmit(event) {
   event.preventDefault();
   const nickname = nicknameInputEl.value.trim();
   if (!nickname) return;
+  if (isDemoMode) {
+    startDemoSession(nickname);
+    return;
+  }
   startSession(nickname, true);
 }
 
@@ -202,6 +203,24 @@ function startSession(nickname, fromGate) {
       sessionStorage.setItem(SESSION_NICK_KEY, result.nickname);
     }
   });
+}
+
+function startDemoSession(nickname) {
+  const cleaned = nickname.trim();
+  if (!cleaned) return;
+  state.userId = stableDemoUserId(cleaned);
+  state.nickname = cleaned;
+  state.rooms = loadDemoRooms();
+  if (!state.rooms.length) {
+    state.rooms = [{ id: 1, name: "General" }];
+    persistDemoRooms(state.rooms);
+  }
+  state.onlineUsers = [{ userId: state.userId, nickname: cleaned, role: "member" }];
+  state.blockedUserIds = new Set();
+  sessionStorage.setItem(SESSION_NICK_KEY, cleaned);
+  unlockApp();
+  renderRooms();
+  joinRoomDemo(state.rooms[0].name);
 }
 
 function onSessionReady(payload) {
@@ -244,6 +263,17 @@ function onSwitchUser() {
 function onCreateRoom() {
   const roomName = newRoomInputEl.value.trim();
   if (!roomName) return;
+  if (isDemoMode) {
+    if (state.rooms.some((room) => room.name.toLowerCase() === roomName.toLowerCase())) {
+      joinRoomDemo(roomName);
+      return;
+    }
+    state.rooms.push({ id: Date.now(), name: roomName });
+    persistDemoRooms(state.rooms);
+    newRoomInputEl.value = "";
+    joinRoomDemo(roomName);
+    return;
+  }
   socket.emit("room:create", { roomName }, (result) => {
     if (!result?.ok) {
       alert(result?.error || "Could not create room");
@@ -255,6 +285,10 @@ function onCreateRoom() {
 }
 
 function joinRoom(roomName) {
+  if (isDemoMode) {
+    joinRoomDemo(roomName);
+    return;
+  }
   socket.emit("room:join", { roomName, lastSeenTs: Date.now() - 10000 }, (result) => {
     if (!result?.ok) {
       alert(result?.error || "Could not join room");
@@ -262,7 +296,24 @@ function joinRoom(roomName) {
   });
 }
 
+function joinRoomDemo(roomName) {
+  const room = state.rooms.find((entry) => entry.name.toLowerCase() === roomName.toLowerCase());
+  if (!room) return;
+  state.current = { type: "room", roomName: room.name, targetNickname: null };
+  state.roomRole = "member";
+  state.messages = loadDemoMessages(getScopeKey());
+  state.pinned = [];
+  renderScopeHeader();
+  renderPinned();
+  renderMessages();
+  renderRoomSelection();
+}
+
 function openDm(targetNickname) {
+  if (isDemoMode) {
+    alert("DMs are disabled in GitHub Pages demo mode.");
+    return;
+  }
   if (!targetNickname || targetNickname === state.nickname) return;
   state.current = { type: "dm", roomName: null, targetNickname };
   state.roomRole = "member";
@@ -329,8 +380,6 @@ function renderOnlineUsers() {
   onlineUsersListEl.innerHTML = "";
   for (const online of state.onlineUsers) {
     const li = document.createElement("li");
-    const wrap = document.createElement("div");
-    wrap.className = "online-item";
     const button = document.createElement("button");
     button.textContent = online.role === "moderator" ? `${online.nickname} [mod]` : online.nickname;
     button.addEventListener("click", () => openDm(online.nickname));
@@ -338,64 +387,8 @@ function renderOnlineUsers() {
       button.classList.add("active");
     }
     li.appendChild(button);
-
-    const actions = document.createElement("div");
-    actions.className = "controls";
-    if (online.nickname !== state.nickname) {
-      const blockBtn = document.createElement("button");
-      const isBlocked = state.blockedUserIds.has(online.userId);
-      blockBtn.textContent = isBlocked ? "Unblock" : "Block";
-      blockBtn.addEventListener("click", () => onToggleBlock(online.nickname, isBlocked));
-      actions.appendChild(blockBtn);
-      if (state.roomRole === "moderator" && state.current.type === "room") {
-        const kickBtn = document.createElement("button");
-        kickBtn.textContent = "Kick";
-        kickBtn.classList.add("danger");
-        kickBtn.addEventListener("click", () => onKickUser(online.nickname));
-        actions.appendChild(kickBtn);
-
-        const banBtn = document.createElement("button");
-        banBtn.textContent = "Ban";
-        banBtn.classList.add("danger");
-        banBtn.addEventListener("click", () => onBanUser(online.nickname));
-        actions.appendChild(banBtn);
-      }
-    }
-    li.appendChild(actions);
     onlineUsersListEl.appendChild(li);
   }
-}
-
-function onToggleBlock(nickname, currentlyBlocked) {
-  const event = currentlyBlocked ? "user:unblock" : "user:block";
-  socket.emit(event, { nickname }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Could not update block list");
-      return;
-    }
-    state.blockedUserIds = new Set(result.blockedUserIds || []);
-    renderOnlineUsers();
-  });
-}
-
-function onKickUser(nickname) {
-  const reason = window.prompt(`Kick ${nickname}. Reason:`, "rule_violation");
-  if (reason === null) return;
-  socket.emit("moderation:kick", { roomName: state.current.roomName, nickname, reason }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Kick failed");
-    }
-  });
-}
-
-function onBanUser(nickname) {
-  const reason = window.prompt(`Ban ${nickname}. Reason:`, "ban");
-  if (reason === null) return;
-  socket.emit("moderation:ban", { roomName: state.current.roomName, nickname, reason }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Ban failed");
-    }
-  });
 }
 
 async function onSendMessage(event) {
@@ -403,6 +396,33 @@ async function onSendMessage(event) {
   const text = messageInputEl.value.trim();
   const scope = state.current.type;
   const targetNickname = scope === "dm" ? (dmTargetInputEl.value.trim() || state.current.targetNickname) : null;
+
+  if (isDemoMode) {
+    if (!text) return;
+    const message = {
+      id: crypto.randomUUID(),
+      scope: "room",
+      roomName: state.current.roomName,
+      senderId: state.userId,
+      senderNickname: state.nickname,
+      targetUserId: null,
+      targetNickname: null,
+      content: text,
+      createdAt: Date.now(),
+      edited: false,
+      deleted: false,
+      mentions: [],
+      reactions: [],
+      file: null
+    };
+    state.messages.push(message);
+    persistDemoMessages(getScopeKey(), state.messages);
+    renderMessages();
+    messageInputEl.value = "";
+    autoResizeTextarea();
+    return;
+  }
+
   if (scope === "dm" && !targetNickname) {
     alert("Choose a DM target");
     return;
@@ -460,9 +480,7 @@ async function uploadFile(file) {
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
-      headers: {
-        "x-user-id": String(state.userId)
-      }
+      headers: { "x-user-id": String(state.userId) }
     });
     if (!response.ok) {
       const data = await response.json();
@@ -483,6 +501,7 @@ function onTypingInput() {
 }
 
 function sendTyping(isTyping) {
+  if (isDemoMode) return;
   socket.emit("chat:typing", {
     scope: state.current.type,
     roomName: state.current.roomName,
@@ -492,6 +511,12 @@ function sendTyping(isTyping) {
 }
 
 function onFileSelected() {
+  if (isDemoMode) {
+    fileInputEl.value = "";
+    state.attachedFile = null;
+    attachmentLabelEl.textContent = "Attachments disabled in demo mode";
+    return;
+  }
   const file = fileInputEl.files?.[0];
   state.attachedFile = file || null;
   attachmentLabelEl.textContent = file ? `${file.name} (${Math.ceil(file.size / 1024)} KB)` : "No file attached";
@@ -500,6 +525,12 @@ function onFileSelected() {
 function onSearchMessages() {
   const query = searchInputEl.value.trim();
   if (!query) return;
+  if (isDemoMode) {
+    const list = loadDemoMessages(getScopeKey());
+    state.messages = list.filter((msg) => String(msg.content || "").toLowerCase().includes(query.toLowerCase()));
+    renderMessages();
+    return;
+  }
   socket.emit(
     "chat:search",
     {
@@ -521,6 +552,10 @@ function onSearchMessages() {
 
 function onLoadOlder() {
   if (!state.messages.length) return;
+  if (isDemoMode) {
+    transientNotice("Demo mode shows locally stored messages.");
+    return;
+  }
   const beforeTs = state.messages[0].createdAt;
   socket.emit(
     "chat:history",
@@ -552,6 +587,10 @@ function onToggleMute() {
 
 function onRequestStats() {
   if (state.current.type !== "room") return;
+  if (isDemoMode) {
+    alert(`Members online: 1\nMessages/day: ${state.messages.length}`);
+    return;
+  }
   socket.emit("room:stats", { roomName: state.current.roomName }, (result) => {
     if (!result?.ok) {
       alert(result?.error || "Could not load stats");
@@ -585,10 +624,6 @@ function renderPinned() {
 function renderMessages(scrollBottom = true) {
   messagesEl.innerHTML = "";
   for (const message of state.messages) {
-    if (state.blockedUserIds.has(message.senderId)) {
-      continue;
-    }
-
     const fragment = messageTemplateEl.content.cloneNode(true);
     const card = fragment.querySelector(".message-card");
     const authorEl = fragment.querySelector(".author");
@@ -596,8 +631,6 @@ function renderMessages(scrollBottom = true) {
     const bodyEl = fragment.querySelector(".body");
     const controlsEl = fragment.querySelector(".controls");
     const reactionsEl = fragment.querySelector(".reactions");
-    const fileWrapEl = fragment.querySelector(".file-wrap");
-    const fileLinkEl = fragment.querySelector(".file-link");
 
     if (message.senderId === state.userId) {
       card.classList.add("own");
@@ -607,13 +640,7 @@ function renderMessages(scrollBottom = true) {
     const delivery = message.senderId === state.userId ? state.deliveryByMessageId.get(message.id) || "received" : "";
     const edited = message.edited ? " · edited" : "";
     timeEl.textContent = `${stamp}${edited}${delivery ? ` · ${delivery}` : ""}`;
-    bodyEl.innerHTML = decorateMessageBody(message.content, message.mentions || []);
-
-    if (message.file) {
-      fileWrapEl.classList.remove("hidden");
-      fileLinkEl.textContent = `${message.file.name} (${Math.ceil(message.file.sizeBytes / 1024)} KB)`;
-      fileLinkEl.href = message.file.url;
-    }
+    bodyEl.innerHTML = decorateMessageBody(message.content);
 
     const reactQuick = ["👍", "😂", "🔥"];
     for (const emoji of reactQuick) {
@@ -636,24 +663,16 @@ function renderMessages(scrollBottom = true) {
       controlsEl.appendChild(deleteBtn);
     }
 
-    if (state.current.type === "room" && state.roomRole === "moderator") {
+    if (!isDemoMode && state.current.type === "room" && state.roomRole === "moderator") {
       const pinBtn = document.createElement("button");
       pinBtn.textContent = "Pin";
       pinBtn.addEventListener("click", () => pinMessage(message.id));
       controlsEl.appendChild(pinBtn);
-
-      const modDeleteBtn = document.createElement("button");
-      modDeleteBtn.classList.add("danger");
-      modDeleteBtn.textContent = "Mod Delete";
-      modDeleteBtn.addEventListener("click", () => modDeleteMessage(message.id));
-      controlsEl.appendChild(modDeleteBtn);
     }
 
     for (const reaction of message.reactions || []) {
       const badge = document.createElement("button");
       badge.textContent = `${reaction.emoji} ${reaction.count}`;
-      badge.title = reaction.users.join(", ");
-      badge.addEventListener("click", () => reactToMessage(message.id, reaction.emoji));
       reactionsEl.appendChild(badge);
     }
 
@@ -665,47 +684,51 @@ function renderMessages(scrollBottom = true) {
 }
 
 function reactToMessage(messageId, emoji) {
-  socket.emit("chat:reaction", { messageId, emoji }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Reaction failed");
-    }
-  });
+  if (isDemoMode) {
+    state.messages = state.messages.map((msg) => {
+      if (msg.id !== messageId) return msg;
+      const reactions = msg.reactions || [];
+      const existing = reactions.find((r) => r.emoji === emoji);
+      if (!existing) {
+        return { ...msg, reactions: [...reactions, { emoji, count: 1, users: [state.nickname] }] };
+      }
+      return msg;
+    });
+    persistDemoMessages(getScopeKey(), state.messages);
+    renderMessages();
+    return;
+  }
+  socket.emit("chat:reaction", { messageId, emoji }, () => null);
 }
 
 function editMessage(message) {
-  const newText = window.prompt("Edit your last message:", message.content);
+  const newText = window.prompt("Edit your message:", message.content);
   if (newText === null) return;
-  socket.emit("chat:editLast", { messageId: message.id, newText }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Edit failed");
-    }
-  });
+  if (isDemoMode) {
+    state.messages = state.messages.map((msg) =>
+      msg.id === message.id ? { ...msg, content: newText, edited: true } : msg
+    );
+    persistDemoMessages(getScopeKey(), state.messages);
+    renderMessages();
+    return;
+  }
+  socket.emit("chat:editLast", { messageId: message.id, newText }, () => null);
 }
 
 function deleteOwnMessage(messageId) {
-  socket.emit("chat:deleteOwn", { messageId }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Delete failed");
-    }
-  });
-}
-
-function modDeleteMessage(messageId) {
-  const reason = window.prompt("Delete reason:", "policy");
-  if (reason === null) return;
-  socket.emit("moderation:deleteMessage", { messageId, reason }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Moderator delete failed");
-    }
-  });
+  if (isDemoMode) {
+    state.messages = state.messages.map((msg) =>
+      msg.id === messageId ? { ...msg, deleted: true, content: "[deleted]" } : msg
+    );
+    persistDemoMessages(getScopeKey(), state.messages);
+    renderMessages();
+    return;
+  }
+  socket.emit("chat:deleteOwn", { messageId }, () => null);
 }
 
 function pinMessage(messageId) {
-  socket.emit("room:pin", { roomName: state.current.roomName, messageId }, (result) => {
-    if (!result?.ok) {
-      alert(result?.error || "Pin failed");
-    }
-  });
+  socket.emit("room:pin", { roomName: state.current.roomName, messageId }, () => null);
 }
 
 function decorateMessageBody(content) {
@@ -727,10 +750,8 @@ function belongsToCurrentScope(message) {
 function transientNotice(text) {
   typingIndicatorEl.textContent = text;
   setTimeout(() => {
-    if (typingIndicatorEl.textContent === text) {
-      typingIndicatorEl.textContent = "";
-    }
-  }, 2500);
+    if (typingIndicatorEl.textContent === text) typingIndicatorEl.textContent = "";
+  }, 2200);
 }
 
 function autoResizeTextarea() {
@@ -740,9 +761,7 @@ function autoResizeTextarea() {
 
 function mergeByMessageId(messages) {
   const map = new Map();
-  for (const message of messages) {
-    map.set(message.id, message);
-  }
+  for (const message of messages) map.set(message.id, message);
   return Array.from(map.values()).sort((a, b) => a.createdAt - b.createdAt);
 }
 
@@ -767,6 +786,53 @@ function loadMuteMap() {
 
 function persistMuteMap(muteMap) {
   localStorage.setItem(MUTE_KEY, JSON.stringify(muteMap));
+}
+
+function loadDemoRooms() {
+  try {
+    const raw = localStorage.getItem(DEMO_ROOMS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDemoRooms(rooms) {
+  localStorage.setItem(DEMO_ROOMS_KEY, JSON.stringify(rooms));
+}
+
+function loadDemoMessages(scopeKey) {
+  try {
+    const raw = localStorage.getItem(DEMO_MESSAGES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return [];
+    return Array.isArray(parsed[scopeKey]) ? parsed[scopeKey] : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistDemoMessages(scopeKey, messages) {
+  let parsed = {};
+  try {
+    const raw = localStorage.getItem(DEMO_MESSAGES_KEY);
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch {
+    parsed = {};
+  }
+  parsed[scopeKey] = messages;
+  localStorage.setItem(DEMO_MESSAGES_KEY, JSON.stringify(parsed));
+}
+
+function stableDemoUserId(nickname) {
+  let hash = 0;
+  for (let i = 0; i < nickname.length; i += 1) {
+    hash = (hash * 31 + nickname.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) + 1;
 }
 
 function escapeHtml(value) {
