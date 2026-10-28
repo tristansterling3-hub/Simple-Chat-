@@ -4,7 +4,7 @@ Realtime chat app with rooms, direct messages, moderation, persistence, and file
 
 ## Demo Recording
 
-[Watch the demo video](./Simple%20Chat.mp4)
+[Watch the demo video](https://www.youtube.com/watch?v=mkmkVn-55nk)
 
 ## Run
 
